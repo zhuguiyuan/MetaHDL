@@ -1,0 +1,1079 @@
+% Intended LaTeX compiler: pdflatex
+\documentclass[10pt,oneside]{book}
+\usepackage{MXBookphv}
+\makeindex
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{longtable}
+\usepackage{wrapfig}
+\usepackage{rotating}
+\usepackage[normalem]{ulem}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{capt-of}
+\usepackage{hyperref}
+\author{xinmeng@hotmail.com}
+\date{2023-11-27}
+\title{MetaHDL Manual}
+\hypersetup{
+ pdfauthor={xinmeng@hotmail.com},
+ pdftitle={MetaHDL Manual},
+ pdfkeywords={},
+ pdfsubject={},
+ pdfcreator={Emacs 29.4 (Org mode 9.6.15)}, 
+ pdflang={English}}
+\begin{document}
+
+\maketitle
+\tableofcontents
+
+
+\chapter{Introduction}
+\label{sec:org00340b3}
+MetaHDL (shorted as "mhdl" in this document) is an HDL aims at
+synthesizable digital VLSI designs (commonly known as RTL designs).
+mhdl selectively inherits SystemVerilog
+syntax, eliminates unnecessary variants, extends existing
+synthesizable language structures and adds new grammars to simplify
+RTL coding.  Designers will find it quite intuitive and flexible when
+using mhdl.  A compiler named \texttt{mhdlc} is implemented to translate mhdl
+to SystemVerilog or Verilog
+
+\section{Features}
+\label{sec:orgc968f7e}
+\begin{enumerate}
+\item Comprehensive Preprocessor
+
+\item Flexible declarations
+
+\item Port inference and automatic variable declarations
+
+\item Enhanced instantiation syntax
+
+\item New syntax for ff and fsm
+
+\item Parameter tracing
+
+\item Automatic dependency resolving
+
+\item Lightweight lint checking
+
+\item Independent Verilog Parser to support IP integration
+
+\item Rich user control syntax
+
+\item Re-indent the generated sv/v
+\end{enumerate}
+
+\section{Document Organization}
+\label{sec:org71a7d4f}
+In the reset of this manual, mhdl syntax and usage will be documented in
+detail, following is the organization of this document:
+
+\begin{itemize}
+\item \hyperref[sec:org0a37dbd]{Basic Concepts} gives many basic and important concepts behind
+mhdl.  All readers are expected to read this chapter carefully,
+otherwise, later chapters are difficult to understand.
+
+\item \hyperref[sec:org7a8e6f7]{Syntax} gives major syntax explanations and sample codes. After
+reading this chapter, readers can develop complex chips with
+powerful capabilities provided by mhdl.
+
+\item \hyperref[sec:orga49f1d8]{Preprocessor} describes preprocessor in mhdlc and support
+directives. Designers can achieve script-like code configurations by
+using this build-in preprocessor, instead of writing dozens of
+one-time scripts.
+
+\item \hyperref[sec:org17bead1]{User Control} lists various user control
+variables that alter compiler execution.
+
+\item \hyperref[sec:orgcd94bb9]{Command Line Options} documents all command line options accepted by
+mhdlc.
+
+\item \hyperref[sec:orgd4e6ee2]{For VPerl Designers} provides additional information for those who
+originally use vperl for daily coding.
+Differences with vperl are summarized there.
+
+\item \hyperref[sec:orgbcbe461]{formal syntax} is the complete formal syntax of mhdl.
+\end{itemize}
+
+\section{download and bug report}
+\label{sec:org525a051}
+\texttt{mhdlc} is publically available at \url{https://github.com/xinmeng/metahdl}.
+if you find any bug of mhdlc, ambiguous contents or typo in this
+document, please file issue at github. 
+
+\chapter{Basic Concepts}
+\label{sec:org0a37dbd}
+RTL designs are not like other programming, there are few local
+variables.  In addition to physical resources occupation semantics,
+RTL variables also represent nets or connections.  Physical elements
+are connected via variables.  Normally, there is no floating net
+inside modules, which means every net should have source and sinks.
+if a net has no source, it should be module input port, which will be
+fed by external drivers.  If it has no sink, it should be module
+output port, which will drive external modules' signal.  If it has
+both source and sinks, it is most probably an internal net.  These are
+basic rules of port inference in mhdl.  Designers can override these
+rules by adding explicit port declarations.
+
+Module ports are automatically inferred by compiler, and designers can
+ask compiler to perform port validation (or port checking) against
+designers' explicit declaration.  In this scenario, golden ports are
+declared by designers, compiler compares the inferred ports and
+declared ports, any missing or newly emerging ports are reported as
+error.
+
+In mhdl world, there are \textbf{only} four types of building blocks in
+synthesizable rtl designs:
+
+\begin{enumerate}
+\item combinational logic
+\item sequential logic (mostly flip-flop)
+\item module instantiation
+\item FSM.  Technically, FSM is essentially a mixture of combinational
+and sequential logic, because it is so commonly used, we promote it
+to a basic structure.
+\end{enumerate}
+
+They are called \emph{code block} in the rest of this document.  Any
+modules, no matter how complex it is, can be decomposed to these four
+structures.  Module is treated as a physical resources wrapper with
+parameters to be overridden upon instantiation.
+
+mhdl RTL designing is a process in which designers describe
+functionalities using code blocks.  \texttt{mhdlc} connects nets with same
+name and infers ports according to designers' declarations.
+Parameters are recognized and ports/nets are parameterized
+automatically.
+
+mhdl also allows designers to embed script-like code configurations
+(via preprocessor) in RTL in a reuse oriented design.  Module logic
+can be fine-grain tuned before translating mhdl to SystemVerilog.
+Ports and variable declarations are dynamically updated according to
+logic configuration.
+
+\chapter{Syntax}
+\label{sec:org7a8e6f7}
+mhdl selectively inherits synthesizable syntax of SystemVerilog,
+eliminates unnecessary variants, extends module instantiation syntax,
+add new syntax for flip-flop and FSM.  Verilog or SystemVerilog
+designers will find it quite intuitive to use mhdl syntax.  In the rest
+of this chapter, major syntax are presented with examples, refer to
+\hyperref[sec:orgbcbe461]{Formal Syntax} for complete syntax.
+
+\section{Combinational Logic}
+\label{sec:org5bdcb1d}
+There are two and \textbf{only two} types of code block in mhdl for coding
+combinational logic, as shown in \autoref{code:comb}:
+
+\begin{enumerate}
+\item \texttt{assign} statement
+\item \texttt{always\_comb} statement
+\end{enumerate}
+
+\begin{lstlisting}[language=verilog,label= ,caption={Combinational logic example},captionpos=b,firstnumber=1,numbers=left,label={code:comb},frame=single]
+// OK, accepted
+always_comb
+  if ( enabled )
+    o1 = i1 | i2 | i3;
+  else
+    o1 = 1'b0;
+
+// OK, accepted
+assign o2 = cond ? i1 : i2;
+
+// Illegal, wrong!!
+// conventional Verilog is NOT supported
+always @( i1 or i2 or i3 )
+  if ( enabled )
+    o1 = i1 | i2 | i3;
+  else
+    o1 = 1'b0;
+
+
+// Illegal, wrong!!
+// Verilog 2000 is NOT supported, either
+always @(*)
+  if ( enabled )
+    o1 = i1 | i2 | i3;
+  else
+    o1 = 1'b0;  
+\end{lstlisting}
+
+\section{Sequential Logic}
+\label{sec:org1aa85b8}
+There are two types of code block in mhdl for coding sequential logic:
+
+\begin{enumerate}
+\item \texttt{always\_ff @()} statement, which is same in SystemVerilog
+\item \texttt{ff-endff} block, which is introduced by mhdl
+\end{enumerate}
+
+The troditional SystemVerilog syntax is good except its redundancy: FF
+variable appears twice (even more) in different clause of \texttt{if-else}
+branches.  For a multi-bit vector variable, such redundancy is prone
+to typo and width mismatch.
+
+For well-coded FF, combinational part of the FF sources should be
+coded in a separate code block, so the \texttt{if-else} branches can be
+reduced.  mhdl provides a new \texttt{ff-endff} code block to reduce
+redundancy.  FF code in following two forms (\autoref{code:ff_blk}) are
+equivalent.
+
+\begin{lstlisting}[language=verilog,label= ,caption={ff-endff code block example},captionpos=b,firstnumber=1,numbers=left,label={code:ff_blk}]
+// troditional sequential block
+always_ff @ (posedge clk or negedge rst_n) 
+  if (!rst_n) 
+    a_ff <= 1'b0; 
+  else
+    a_ff <= a;
+
+// MetaHDL new sequential block
+ff; 
+  a_ff, a, 1'b0; 
+endff
+\end{lstlisting}
+
+
+\texttt{ff-endff} block can optionally specify clock and reset signal name.
+Usually they are ommitted to further reduce redundancy.  Each
+line in block describes a FF.  A line has three element:
+
+\begin{enumerate}
+\item FF variable name, \texttt{a\_ff} here.
+\item An expression containing the logic to update the FF, \texttt{a} here.  Any
+expression defined in \hyperref[sec:orgbcbe461]{Formal Syntax} are allowed here.
+\item An optinally reset value.  If no reset value is provided, FF
+variable will not be reset.
+\end{enumerate}
+
+Here is example:
+\begin{lstlisting}[language=verilog,label= ,caption={ff-endff block example and corresponding SystemVerilog},captionpos=b,firstnumber=1,numbers=left]
+ff clk_a, clk_a_rst_n;
+  a_ff, a, 1'b0;
+  b_ff, b;
+  c_ff, a_ff & b_ff, 1'b0;
+endff
+
+// Generated SystemVerilog from above code
+always_ff @(posedge clk_a or negedge clk_a_rst_n)
+  if (!clk_a_rst_n) begin
+     a_ff <= 1'b0; 
+     c_ff <= 1'b0; 
+  end 
+  else begin
+     a_ff <= a; 
+     b_ff <= b; 
+     c_ff <= a_ff & b_ff; 
+  end
+\end{lstlisting}
+
+
+\section{FSM}
+\label{sec:orgac0159b}
+FSM in conventional RTL design requires many constant/parameter
+definitions to improve code readability.  But these definitions are
+tedious to maintain during develop iterations, especially for one-hot
+encoded FSM.  mhdl introduces \emph{symbol based} FSM programming paradigm
+that liberates designers from such frustrated situation.
+
+FSM code block is enclosed by keywords \texttt{fsm}, \texttt{fsm\_nc} and \texttt{endfsm}.
+\texttt{fsm} keyword is followed by three identifiers:
+
+\begin{enumerate}
+\item FSM name, which is mandatory.
+\item clock signal name, which is optional.
+\item reset signal name, which is optional, too.
+\end{enumerate}
+
+FSM name is used as based name of state register, \texttt{\_cs} and \texttt{\_ns}
+suffix are appended to FSM name to create current state register and
+next state next state register, respectively.  Clock and reset signal
+names are used in sequential block of FSM, which resets state register
+and perform current state refreshing.  Clock and reset names can be
+omitted together, and default name \texttt{clk} and \texttt{rst\_n} will be used.
+State transition is explicitly stated by \texttt{goto} keyword, instead of
+next state assignment.
+
+Symbol based FSM programming allows designers to code FSM using state
+names, one-hot state encodings are automatically generated by \texttt{mhdlc}.
+Constant definitions are generated according to state names to improve
+code readability.  To help designers eliminate state name typo, mhdlc
+will build a \emph{Directed Graph} representing state transition during
+parsing.  By checking the connectivity of every state, dead states and
+unreachable states are reported to designers for confirmation.
+\autoref{code:fsm_mhdl} is mhdl FSM description, \autoref{code:fsm_sv} is
+the corresponding SystemVerilog description, including constant
+definition.
+
+\begin{lstlisting}[language=verilog,label= ,caption={FSM code in MetaHDL},captionpos=b,firstnumber=1,numbers=left]
+fsm cmdrx, clk, rst_n; 
+
+cm_pim_ack = 1'b0;
+
+IDLE: begin
+   if ( pim_cm_req ) begin
+      cm_pim_ack = 1'b1; 
+      goto DATA; 
+   end
+   else begin
+      goto IDLE; 
+   end
+end
+
+DATA: begin
+   cm_pim_ack = 1'b1; 
+   if ( pim_cm_eof ) begin
+      cm_pim_ack = 1'b0; 
+      goto IDLE; 
+   end
+   else
+     begin
+        goto DATA; 
+     end
+end
+
+endfsm
+\end{lstlisting}
+
+\begin{lstlisting}[language=verilog,label= ,caption={FSM code generated in SystemVerilog},captionpos=b,firstnumber=1,numbers=left]
+// other declarations...
+const logic [1:0] DATA = 2'b10; 
+const logic [1:0] IDLE = 2'b01; 
+const int _DATA_ = 1; 
+const int _IDLE_ = 0;
+
+// Sequential part of cmdrx
+always_ff @(posedge clk or negedge rst_n) 
+  if( ~rst_n) begin
+     cmdrx_cs <= IDLE; 
+  end 
+  else begin
+     cmdrx_cs <= cmdrx_ns;
+  end
+
+// Combnational part of cmdrx 
+always_comb begin 
+   cm_pim_ack = 1'b0;
+   unique case ( 1'b1 ) 
+     cmdrx_cs[_IDLE_] : begin 
+        if ( pim_cm_req ) begin
+           cm_pim_ack = 1'b1; 
+           cmdrx_ns = DATA; 
+        end
+        else begin
+           cmdrx_ns = IDLE; 
+        end
+     end
+
+     cmdrx_cs[_DATA_] : begin
+        cm_pim_ack = 1'b1; 
+        if ( pim_cm_eof ) begin
+           cm_pim_ack = 1'b0; 
+           cmdrx_ns = IDLE; 
+        end
+        else begin
+           cmdrx_ns = DATA; 
+        end
+     end
+
+     default: begin 
+        cmdrx_ns = 2'hX; 
+     end 
+   endcase
+end
+\end{lstlisting}
+
+Difference between \texttt{fsm} and \texttt{fsm\_nc} is Verilog generated from
+\texttt{fsm\_nc} block will not contain the sequential block.  That means
+designers have to manually code the sequential block.  This is
+expecially designed for FSM with synchronous reset.  \textbf{Note} that the
+manual crafted sequential block \emph{must} come after the block, because
+and signals are only accessible after block is parsed.
+
+\section{Module Instantiation}
+\label{sec:org2674b28}
+SystemVerilog module instantiation syntax is extended in mhdl, BNF is
+shown in \hyperref[sec:orgbcbe461]{Formal Syntax}, start from non-terminal "inst\_block". Features
+of mhdl instantiation syntax are highlighted below:
+
+\begin{enumerate}
+\item Instance name is optional.  Default instance name created by
+prefixeding \texttt{x\_} on module named.
+\item Port connection is optional.  Default behavior is to connect ports to
+net with identical name.
+\item Prefix and/or Suffix connection rules are allowed in port
+connection (see example below).
+\item Regular expression connection rule is allowed in port connection
+(see example below).
+\end{enumerate}
+
+\begin{lstlisting}[language=verilog,label= ,caption={Module \texttt{moda} to be instantiated},captionpos=b,firstnumber=1,numbers=left,label={code:moda}]
+module moda
+  (input i1,
+   input i2, 
+   output o1, 
+   output [1:0] o2
+   );
+
+endmodule
+\end{lstlisting}
+
+\autoref{code:inst_moda_mhdl} shows different connection rules.
+\autoref{code:inst_moda_v} is the generated SystemVerilog. 
+
+\begin{lstlisting}[language=verilog,label= ,caption={Instantiate moda in mhdl},captionpos=b,firstnumber=1,numbers=left,label={code:inst_moda_mhdl}]
+// simplest instantiation
+moda;
+
+// prefix connection rule
+moda x1_moda ( x1_ +);
+
+// suffix connection rule after prefix rule
+moda x2_moda ( x2_ + , 
+               + _22);
+
+// regexp connection rule
+moda x3_moda
+  ( "s/o/out/g", 
+    "s/i/in/g" );
+\end{lstlisting}
+
+
+\begin{lstlisting}[language=verilog,label= ,caption={Instaniate \texttt{moda}},captionpos=b,firstnumber=1,numbers=left,label={code:inst_moda_v}]
+moda x_moda
+  (.i1 (i1),
+   .i2 (i2),
+   .o1 (o1),
+   .o2 (o2) );
+
+moda x1_moda
+  ( .i1 (x1_i1),
+    .i2 (x1_i2),
+    .o1 (x1_o1),
+    .o2 (x1_o2) );
+
+moda x2_moda
+  ( .i1 (x2_i1_22),
+    .i2 (x2_i2_22),
+    .o1 (x2_o1_22),
+    .o2 (x2_o2_22) );
+
+moda x3_moda
+  ( .i1 (in1),
+    .i2 (in2),
+    .o1 (out1),
+    .o2 (out2) );
+\end{lstlisting}
+
+\section{Parameter Tracing}
+\label{sec:org972f3d1}
+mhdl enables designers to creates parameterized module in two ways:
+\begin{enumerate}
+\item Write parameterized module in MetaHDl from draft.
+\item Build parameterized module by instantiating parameterized modules.
+\end{enumerate}
+
+To use parameter in mhdl source code, designers declare parameters,
+and use them in ports or net.  \texttt{mhdlc} will automatically parameterize
+ports in generated declarations.  If a module to be instantiated is a
+parameterized module, \texttt{mhdlc} can trace parameter usage in port
+connections and automatically parameterize nets in wrapper
+module. Here are some examples. 
+
+
+In \autoref{code:modc_mhdl}, \texttt{modc} is created in mhdl with parameters.
+\autoref{code:modc_v} is the generated SystemVerilog.  Ports and nets
+are properly parameterized. 
+
+\begin{lstlisting}[language=verilog,label= ,caption={Coding \texttt{modc} in mhdl with parameters},captionpos=b,firstnumber=1,numbers=left,label={code:modc_mhdl}]
+parameter A = 4;
+parameter B = 5;
+parameter C = A + B;
+
+assign o1[C-1:0] = {~i1[A-1:0], i2[B-1:0]};
+\end{lstlisting}
+
+\begin{lstlisting}[language=verilog,label= ,caption={Generated modc.v with parameters},captionpos=b,firstnumber=1,numbers=left,label={code:modc_v}]
+module modc
+  ( i1, i2, o1);
+
+   parameter A = 4; 
+   parameter B = 5; 
+   parameter C = 4 + 5;
+
+   input [A - 1:0] i1; 
+   input [B - 1:0] i2; 
+   output [C - 1:0] o1;
+
+   logic [A - 1:0]  i1; 
+   logic [B - 1:0]  i2; 
+   logic [C - 1:0]  o1;
+
+   assign o1[C - 1:0] = {~i1[A - 1:0], i2[B - 1:0]};
+
+endmodule
+\end{lstlisting}
+
+
+In \autoref{code:inst_modc_mhdl}, \texttt{modc} is instantiated several times
+to demonstrate parameter tracing. 
+
+\begin{lstlisting}[language=verilog,label= ,caption={Instantiate \texttt{modc} in mhdl with parameter override},captionpos=b,firstnumber=1,numbers=left,label={code:inst_modc_mhdl}]
+parameter SETA = 8;
+parameter SETB = 9;
+
+modc #(.A(2)) x0_modc ( x0_ + );
+
+modc #(.A (SETA), .B (SETB)) x1_modc ( x1_ + );
+
+modc #(.A (SETA)) x2_modc (x2_ +, .o1 (x2_o1[10:0]));
+\end{lstlisting}
+
+\begin{lstlisting}[language=verilog,label= ,caption={Genrated wrapper with parameter tracing},captionpos=b,firstnumber=1,numbers=left,label={code:inst_modc_v}]
+module modwrapper
+  ( x0_i1, x0_i2, x0_o1, x1_i1, x1_i2, x1_o1, x2_i1, x2_i2, x2_o1);
+
+parameter SETA = 8; 
+parameter SETB = 9;
+
+   input  [1 :0]                x0_i1;
+   input [4 :0]                 x0_i2;
+   output [6 :0]                x0_o1;
+   input [SETA - 1:0]           x1_i1;
+   input [SETB - 1:0]           x1_i2;
+   output [SETA + SETB - 1:0]   x1_o1;
+   input [SETA - 1:0]           x2_i1;
+   input [4 :0]                 x2_i2;
+   output [10 :0]               x2_o1;
+
+   logic [1 :0]                 x0_i1;
+   logic [4 :0]                 x0_i2;
+   logic [6 :0]                 x0_o1;
+   logic [SETA - 1:0]           x1_i1;
+   logic [SETB - 1:0]           x1_i2;
+   logic [SETA + SETB - 1:0]    x1_o1;
+   logic [SETA - 1:0]           x2_i1;
+   logic [4 :0]                 x2_i2;
+   logic [10 :0]                x2_o1;
+
+   modc #( .A( 2 ), 
+           .B( 5 ), 
+           .C( 2 + 5 ) ) 
+   x0_modc
+     ( .i1 (x0_i1),
+       .i2 (x0_i2), 
+       .o1 (x0_o1) );
+   
+   modc #( .A( SETA ), 
+           .B( SETB ), 
+           .C( SETA + SETB ) ) 
+   x1_modc
+     ( .i1 (x1_i1), 
+       .i2 (x1_i2),
+       .o1 (x1_o1) );
+
+   modc #( .A( SETA ), 
+           .B( 5 ), 
+           .C( SETA + 5 ) ) 
+   x2_modc
+     ( .i1 (x2_i1), 
+       .i2 (x2_i2),
+       .o1 (x2_o1[10:0]) );
+
+endmodule
+\end{lstlisting}
+
+\section{Optional Declaration}
+\label{sec:org4348cb9}
+Declaration in Verilog and SystemVerilog is mandatory, but in mhdl is
+optional.  \texttt{mhdlc} can automatcially infer width, port directions, and
+variable type from a well designed synthesizable RTL code.  But in
+some cases, designers want to constrain the inference results.  This can
+be done by declaration statements.  Usually, declaration is used in
+follow sceanrios:
+
+\begin{enumerate}
+\item Force port direction, such as
+\begin{lstlisting}[language=verilog,label= ,caption= ,captionpos=b,numbers=none]
+input a;
+output b;
+nonport c;
+\end{lstlisting}
+
+\item 2 dimensional array, such as
+\begin{lstlisting}[language=verilog,label= ,caption= ,captionpos=b,numbers=none]
+reg [31:0] unpacked_a [15:0];
+reg [31:0] [7:0] packed_b;
+
+always_comb begin
+   // i will be declared by mhdlc
+   for (i=0; i<8; i++)
+     packed_b[i] = unpacked_a[i];
+end
+\end{lstlisting}
+\end{enumerate}
+
+\chapter{Preprocessor}
+\label{sec:orga49f1d8}
+Preprocessor helps designers to embed script-like code configuration
+directives into RTL code for reuse oriented designs.  Conventionally,
+designers are used to write one-time scripts (Perl/sed/awk/csh) to
+preprocess their RTL for using in different project.  This methodology
+is not clean enough.  Verification engineers have to create additional
+steps in Makefile to preprocess code.  mhdl preprocessor uses
+SystemVerilog style macro syntax, introduces more flow control
+directives that help designers perform conditional and repetitive
+configuration on RTL.
+
+In addition to conventional \texttt{`ifdef}, \texttt{`ifndef}, \texttt{`else}, \texttt{`define}
+and \texttt{`include} macro directives, introduces \texttt{`for}, \texttt{`if} and \texttt{`let}
+to enlarge the power of preprocessor (see following examples).
+
+\autoref{code:pp_arb} is a simple Round Robin Arbiter FSM implemented in
+with facilitating preprocessor.  This arbiter can respond to a
+configurable number of slaves, which is controlled by macro
+\texttt{SLV\_NUM}.  Once the code is finished, various arbiters can be
+generated by giving different values to \texttt{SLV\_NUM}.
+
+\begin{lstlisting}[language=verilog,label= ,caption={Configurable Arbiter in mhdl},captionpos=b,firstnumber=1,numbers=left,label={code:pp_arb}]
+fsm arb;
+
+`for (i=1; `i<=`SLV NUM; i++)
+slave_grnt_`i = 1'b0;
+`endfor
+
+`for (i=1; `i<=`SLV NUM; i++)
+ `let j = `i + 1
+
+ `if `i != `SLV NUM
+SLAVE_`i: begin
+   if ( slave_req_`i ) begin
+      slave_grnt_`i = 1'b1;
+      if ( slave_eof_`i ) begin
+         slave_grnt_`i = 1'b0;
+         goto SLAVE_`j;
+      end
+      else begin
+         goto SLAVE_`i;
+      end
+   end
+   else
+     goto SLAVE_`j;
+end
+
+ `else
+SLAVE_`i: begin
+   if ( slave_req_`i ) begin
+      slave_grnt_`i = 1'b1;
+      if ( slave_eof_`i ) begin
+         slave_grnt_`i = 1'b0;
+         goto SLAVE_1;
+      end
+      else
+        goto SLAVE_`i;
+   end
+   else
+     goto SLAVE_1;
+end
+ `endif
+`endfor
+endfsm
+\end{lstlisting}
+
+A \texttt{`for} directive is used to repetitively "write" code with slight
+difference.  Default values of FSM output are set within this block.
+
+Another \texttt{`for} directive to write slave handling code, one state for
+each slave.  Since it is a Round Robin arbiter, every states perform
+same task: grant slave access if has request, move to next slave when
+current one has no request or transaction is done, roll back to the
+first slave when a arbitration round finishes.  A \texttt{`if} block is used
+to check whether current state is for last slave.
+
+A \texttt{`let} directive is used to perform arithmetic operation and
+calculate value of \texttt{`j}, which is the number of next slave.
+
+\autoref{code:pp_arb_v} shows te SyntemVerilog generated with \texttt{SLV\_NUM=4}.
+
+\begin{lstlisting}[language=verilog,label= ,caption={Generated Arbiter in SystemVerilog code (SLV\_NUM=4)},captionpos=b,firstnumber=1,numbers=left,label={code:pp_arb_v}]
+module arbiter (
+                clock,
+                reset_n,
+                slave_eof_1,
+                slave_eof_2,
+                slave_eof_3,
+                slave_eof_4,
+                slave_grnt_1,
+                slave_grnt_2,
+                slave_grnt_3,
+                slave_grnt_4,
+                slave_req_1,
+                slave_req_2,
+                slave_req_3,
+                slave_req_4);
+
+
+   input clock;
+   input reset_n;
+   input slave_eof_1;
+   input slave_eof_2;
+   input slave_eof_3;
+   input slave_eof_4;
+   output slave_grnt_1;
+   output slave_grnt_2;
+   output slave_grnt_3;
+   output slave_grnt_4;
+   input  slave_req_1;
+   input  slave_req_2;
+   input  slave_req_3;
+   input  slave_req_4;
+
+   const logic [3:0] SLAVE_1 = 4'b0001;
+   const logic [3:0] SLAVE_2 = 4'b0010;
+   const logic [3:0] SLAVE_3 = 4'b0100;
+   const logic [3:0] SLAVE_4 = 4'b1000;
+   const int         _SLAVE_1_ = 0;
+   const int         _SLAVE_2_ = 1;
+   const int         _SLAVE_3_ = 2;
+   const int         _SLAVE_4_ = 3;
+   logic [3:0]       arb_cs;
+   logic [3:0]       arb_ns;
+   logic             clock;
+   logic             reset_n;
+   logic             slave_eof_1;
+   logic             slave_eof_2;
+   logic             slave_eof_3;
+   logic             slave_eof_4;
+   logic             slave_grnt_1;
+   logic             slave_grnt_2;
+   logic             slave_grnt_3;
+   logic             slave_grnt_4;
+   logic             slave_req_1;
+   logic             slave_req_2;
+   logic             slave_req_3;
+   logic             slave_req_4;
+
+   // Sequential part of FSM /tmp/xin_meng/mhdlc/test/arbiter.mhdl:1.0-42.5
+   // /tmp/xin_meng/mhdlc/test/arbiter.mhdl:1.0-42.5
+   always_ff @(posedge clock or negedge reset_n)
+     if (~reset_n) begin
+        arb_cs <= SLAVE_1;
+     end
+     else begin
+        arb_cs <= arb_ns;
+     end
+
+   // Combnational part of FSM /tmp/xin_meng/mhdlc/test/arbiter.mhdl:1.0-42.5
+   // /tmp/xin_meng/mhdlc/test/arbiter.mhdl:1.0-42.5
+   always_comb begin
+      slave_grnt_1 = 1'b0;
+      slave_grnt_2 = 1'b0;
+      slave_grnt_3 = 1'b0;
+      slave_grnt_4 = 1'b0;
+      unique case ( 1'b1 )
+        arb_cs[_SLAVE_1_] : begin
+           if ( slave_req_1 ) begin
+              slave_grnt_1 = 1'b1;
+              if ( slave_eof_1 ) begin
+                 slave_grnt_1 = 1'b0;
+                 arb_ns = SLAVE_2;
+              end
+              else begin
+                 arb_ns = SLAVE_1;
+              end
+           end
+           else begin
+              arb_ns = SLAVE_2;
+           end
+        end
+
+        arb_cs[_SLAVE_2_] : begin
+           if ( slave_req_2 ) begin
+              slave_grnt_2 = 1'b1;
+              if ( slave_eof_2 ) begin
+                 slave_grnt_2 = 1'b0;
+                 arb_ns = SLAVE_3;
+              end
+              else begin
+                 arb_ns = SLAVE_2;
+              end
+           end
+           else begin
+              arb_ns = SLAVE_3;
+           end
+        end
+
+        arb_cs[_SLAVE_3_] : begin
+           if ( slave_req_3 ) begin
+              slave_grnt_3 = 1'b1;
+              if ( slave_eof_3 ) begin
+                 slave_grnt_3 = 1'b0;
+                 arb_ns = SLAVE_4;
+              end
+              else begin
+                 arb_ns = SLAVE_3;
+              end
+           end
+           else begin
+              arb_ns = SLAVE_4;
+           end
+        end
+
+        arb_cs[_SLAVE_4_] : begin
+           if ( slave_req_4 ) begin
+              slave_grnt_4 = 1'b1;
+              if ( slave_eof_4 ) begin
+                 slave_grnt_4 = 1'b0;
+                 arb_ns = SLAVE_1;
+              end
+              else begin
+                 arb_ns = SLAVE_4;
+              end
+           end
+           else begin
+              arb_ns = SLAVE_1;
+           end
+        end
+
+        default: begin
+           arb_ns = 4'hX;
+        end
+      endcase
+   end
+
+
+endmodule   
+\end{lstlisting}
+
+
+
+\texttt{`let} directive supports following functions:
+
+\begin{itemize}
+\item Numeric operators: addition (\texttt{+}), subtraction (\texttt{-}), multiplication
+(\texttt{*}), division (\texttt{/}), modulus (\texttt{\%}), power (\texttt{**}).
+
+\item Logical operators: logical AND (\texttt{\&\&}), logical OR (\texttt{||}), logical
+NOT (\texttt{!}).
+
+\item Bit operators: bitwise XOR (\texttt{\textasciicircum{}}), bitwise AND (\texttt{\&}), bitwise OR (\texttt{|}),
+shift right (\texttt{>{}>{}}), shift left (\texttt{<{}<{}}).
+
+\item Functions: log 2 (\texttt{LOG2()}), round up (\texttt{CEIL()}), round down (\texttt{FLOOR()}),
+round to nearest value (\texttt{ROUND()}), max of two numbers (\texttt{MAX()}), min of
+two numbers (\texttt{MIN()}), odd (\texttt{ODD()}), even (\texttt{EVEN()}), absolute value
+(\texttt{ABS()}).
+\end{itemize}
+
+\begin{lstlisting}[language=verilog,label= ,caption={\texttt{`let} usage examples},captionpos=b,firstnumber=1,numbers=left]
+`define x 2
+
+// NOTE `let need "="
+`let y = `x ** 10 // now `y is 1024
+
+`let z = LOG2(`y) // `z is 10
+`let a = LOG2(`z) // `a is 3.321928
+`let c = CEIL(`a) // `c is 4
+`let f = FLOOR(`a) // `f is 3
+`let r = ROUND(`a) // `r is 3
+
+
+// we can concatenate macro value with other strings
+// using "::" operator
+assign cat_`f::k = 1'b0; // expand to ``assign cat_3k = 1'b0;''
+assign cat_`fk = 1'b0; // Error!! macro ``fk'' is not defined
+\end{lstlisting}
+
+\chapter{User Control}
+\label{sec:org17bead1}
+mhdl provides control syntax start with keyword \texttt{metahdl}, which
+interfaces with and controls the runtime behavior of compiler.
+Designers' controls are passed to compiler via variable assignments
+embedded in RTL code, this variable settings are also preceded by
+keyword \texttt{metahdl}.  Boolean variables inside compiler are set via \texttt{+}
+or \texttt{-} preceded by variable name, where \texttt{+} means "enable" and \texttt{-}
+means "disable".
+
+There are two special form of control syntax: \texttt{exit} syntax, and
+\texttt{message} syntax.  The former is used to command compiler exit when
+the statement is encountered.  The latter is used to print messages on
+\texttt{stderr}.  They are usually used with preprocessor to guarantee
+correct configuration settings.  
+
+Working scope of all variables can be \emph{Modular} or \emph{Effective}.
+Modular variables (MVAR) take effect on entire module and are used
+when parsing is finished.  Designers can set MVAR anywhere in source
+code and get the same effect.  If an MVAR is assigned multiple times,
+last assignment wins.  MVAR can have different values in different
+files, so file is the minimum granularity of MVAR.
+
+Effective variables (EVAR) take effect from the point the variable is
+assigned and are used \emph{during} parsing.  Designers can set different
+values for same EVAR in different sections of source code, and make
+compiler treat sections differently.  So the minimum granularity of
+EVAR is section divided by EVAR assignments.
+
+\section{Variable List}
+\label{sec:orge6b7b18}
+Following is the complete list of all compiler variables can be assigned
+by user control syntax, variable type (boolean or string) and variable
+scope (MVAR or EVAR) are listed with variable name.
+
+\begin{longtable}{|l|c|c|l|p{.45\textwidth}|}
+\caption{Compiler Control variables  \label{tab:com_ctrl}}
+\\[0pt]
+\hline
+\rowcolor{ThemeColor}\tableheader{Name} & \tableheader{Scope} & \tableheader{Type} & \tableheader{Default} & \tableheader{Description}\\[0pt]
+\hline
+\endfirsthead
+\multicolumn{5}{l}{Continued from previous page} \\[0pt]
+\hline
+
+\rowcolor{ThemeColor}\tableheader{Name} & \tableheader{Scope} & \tableheader{Type} & \tableheader{Default} & \tableheader{Description }\\[0pt]
+
+\hline
+\endhead
+\hline\multicolumn{5}{r}{Continued on next page} \\
+\endfoot
+\endlastfoot
+\hline
+modname & MVAR & string & Base file name & Set the generated module name. Often used with preprocessor to distinguish modules with different configurations.\\[0pt]
+outfile & MVAR & string & Base file name & Set the generated Synthesizable file base name. Often used with preprocessor to distinguish module definition files with different configurations.\\[0pt]
+portchk & MVAR & boolean & false & Enable/Disable port validation for module.\\[0pt]
+hierachydepth & MVAR & postitive int & 300 & Maximum level of module instantiation.\\[0pt]
+clock & EVAR & string & clock & Default clock name used for \texttt{ff-endff} and \texttt{fsm-endfsm}\\[0pt]
+reset & EVAR & string & reset\_n & Default reset name used for \texttt{ff-endff} and \texttt{fsm-endfsm}\\[0pt]
+relexedfsm & EVAR & boolean & true & Set severity of connectivity/reachability error checked in FSM. If it is true, relaxed FSM programming mode is enabled, all dead states or unreachable states are acceptable, compiler only reports warning when such states are encountered, and continues processing. if it is false, FSM programming is in strict mode, any dead state or unreachable state is considered to be fatal error, compiler will report error and stop processing if such state is checked.\\[0pt]
+exitonwarning & EVAR & boolean & false & Set severity of \emph{normal parsing warning}, such as width mismatch. If it is true, compiler exits on any warning.\\[0pt]
+exitonlintwarning & EVAR & boolean & false & Warning from port validation, multiple driver checking are categorized as lint warning. If this variable is set to true, compiler will exit on any lint warning.\\[0pt]
+\hline
+\end{longtable}
+
+
+\section{Example}
+\label{sec:org7f63deb}
+demonstrates user control syntax with code configuration.
+
+\begin{itemize}
+\item Line 1 enables port validation in this module.
+\item Line 3 checks value of macro \textasciitilde{}`WIDTH`, forces compilation exit upon
+illegal values.
+\item Line 16 and 17 alter module name and output file name according to
+target device.
+\item Any warning between 19 and 29 makes compiler exit.  To be more
+specific, width mismatch between \texttt{b\_ff} and \texttt{b} is considered to be
+fatal error.
+\item Different clock and reset names are used for different code sections.
+\end{itemize}
+
+\begin{lstlisting}[language=verilog,label= ,caption= ,captionpos=b,firstnumber=1,numbers=left]
+metahdl + portchk;
+
+`if WIDTH > 64
+metahdl ``width can not exceed 64!'';
+metahdl exit;
+`endif
+
+assign data[`WIDTH-1:0] = `WIDTH'd0;
+
+`ifdef FPGA
+ `define target fpga
+`else
+ `define target asic
+`endif
+
+metahdl modname = top_`target;
+metahdl outfile = top_`target;
+
+metahdl + exitonwarning;
+
+metahdl clock = clk_125M;
+metahdl reset = pclk_rst_n;
+
+ff;
+a_ff, a, 1'b0;
+b_ff[1:0], b, 1'b0;
+endff
+
+metahdl - exitonwarning;
+
+metahdl clock = clk_250M;
+metahdl reset = dclk_rst_n;
+
+ff;
+c_ff, c, 1'b0;
+d_ff, d, 1'b0;
+endff
+
+ff;
+e_ff, e, 1'b0;
+g_ff, g, 1'b0;
+endff
+\end{lstlisting}
+
+
+\chapter{Compiler Usage}
+\label{sec:org32ec4ba}
+\section{Command Line Options}
+\label{sec:orgcd94bb9}
+\texttt{mhdlc} command line is listed below:
+\begin{verbatim}
+% mhdlc <options> mhdl_file [mhdl_file mhdl_file ...]
+\end{verbatim}
+
+Command line captions are case sensitive, which means \texttt{-p} and \texttt{-P}
+are different.  Major options are listed below:
+
+\begin{enumerate}
+\item \texttt{-I} Specify single search path for \texttt{mhdlc} to look for \texttt{`include}
+files.
+
+\item \texttt{-o} Specify output base directory for generated files.  mhdl source
+directory structure is mirrored under it.
+
+\item \texttt{-D} Define macro from command line. e.g., \texttt{-DCMD\_EN} defines a
+macro named \texttt{CMD\_EN}, \texttt{-DSLV\_NUM=4} defines a macro \texttt{SLV\_NUM} with
+\texttt{4} as its value.
+
+\item \texttt{-mb} specify mhdl source base directory.  All mhdl files are
+searched recursively from this directory.  \texttt{-mb} can only be
+specified once, multiple values are not allowed.
+
+\item \texttt{-ib} specify IP base directories, which contain existing verilog
+designs.  Multiple \texttt{-ib} can be spcified at command line.
+\end{enumerate}
+
+All other text in command line and does not start with "-" are
+considered to be file names to be processed.
+
+\section{For VPerl Designers}
+\label{sec:orgd4e6ee2}
+\begin{enumerate}
+\item \texttt{\&Depend} is no longer needed since automatically resolves
+dependency.
+
+\item \texttt{vpmake -depend} is not needed anymore, just give top level file and
+search path.
+
+\item All \texttt{\&Force} should be converted to standard declarations, including
+2D array.
+
+\item \texttt{\&ConnRule} and \texttt{\&Connect} should be converted according to port
+connect syntax.
+
+\item \texttt{\&Instance} should be converted to instantiation syntax.
+
+\item \texttt{c-sky vperl\_off} and \texttt{c-sky vperl\_on} should be converted to
+\texttt{rawcode} and \texttt{endrawcode}.
+
+\item File extension is \texttt{.mhdl}, not \texttt{.vp} .
+\end{enumerate}
+
+
+\chapter{Formal Syntax}
+\label{sec:orgbcbe461}
+\input{formal_syntax.tex}
+\end{document}
