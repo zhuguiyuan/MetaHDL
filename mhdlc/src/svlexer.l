@@ -325,7 +325,7 @@ NUM [0-9]+
 WS [ \t]+
 
 %%
-static string buf;
+  static string buf;
 
 
 {K_ENDMODULE} return sv_token::K_ENDMODULE;
